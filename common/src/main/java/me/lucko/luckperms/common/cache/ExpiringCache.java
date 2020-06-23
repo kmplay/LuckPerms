@@ -28,6 +28,8 @@ package me.lucko.luckperms.common.cache;
 import org.checkerframework.checker.nullness.qual.NonNull;
 
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 
 /**
@@ -40,6 +42,7 @@ import java.util.function.Supplier;
  */
 public abstract class ExpiringCache<T> implements Supplier<T> {
     private final long durationNanos;
+    private final Object lock = new Object();
 
     private volatile T value;
 
@@ -54,11 +57,11 @@ public abstract class ExpiringCache<T> implements Supplier<T> {
 
     @Override
     public T get() {
-        long nanos = this.expirationNanos;
-        long now = System.nanoTime();
+        synchronized (this.lock) {
+            long nanos = this.expirationNanos;
+            long now = System.nanoTime();
 
-        if (nanos == 0 || now - nanos >= 0) {
-            synchronized (this) {
+            if (nanos == 0 || now - nanos >= 0) {
                 if (nanos == this.expirationNanos) { // recheck for lost race
                     // compute the value using the delegate
                     T t = supply();
@@ -72,12 +75,14 @@ public abstract class ExpiringCache<T> implements Supplier<T> {
                     return t;
                 }
             }
+            return this.value;
         }
-        return this.value;
     }
 
     public void invalidate() {
-        this.expirationNanos = 0;
+        synchronized (this.lock) {
+            this.expirationNanos = 0;
+        }
     }
 }
 
